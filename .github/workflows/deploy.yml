@@ -1,0 +1,64 @@
+name: Deploy to GitHub Pages
+
+on:
+  # mainブランチにpushされたら実行
+  push:
+    branches: ["main"]
+
+  # Actionsタブから手動実行も許可
+  workflow_dispatch:
+
+# GitHub Pagesへのデプロイに必要な権限設定
+permissions:
+  contents: read
+  pages: write      # Pagesへの書き込み権限（必須）
+  id-token: write   # OIDC認証用（必須）
+
+# 重複実行の制御（進行中のデプロイがあればキャンセル）
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Environment設定（リポジトリのEnvironment設定と紐付きます）
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. ソースコードの取得
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. 環境変数の埋め込み処理
+      - name: Inject Environment Variables
+        env:
+          # Secretsから値を読み込み、環境変数としてセットします
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          APP_VERSION: ${{ secrets.APP_VERSION }}
+        run: |
+          # API_BASE_URL の置換処理
+          find ./public -type f \( -name "*.html" -o -name "*.js" -o -name "*.css" \) \
+            -exec sed -i "s|\${API_BASE_URL}|$API_BASE_URL|g" {} +
+
+          # APP_VERSION の置換処理
+          find ./public -type f \( -name "*.html" -o -name "*.js" -o -name "*.css" \) \
+            -exec sed -i "s|\${APP_VERSION}|$APP_VERSION|g" {} +
+
+      # 3. Pages のセットアップ
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      # 4. 公開ファイルのパッケージ化
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './public'
+
+      # 5. デプロイ実行
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
